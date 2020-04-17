@@ -2,7 +2,7 @@
 
 /*
   Plugin Name: Flux Reader
-  Plugin URI: 
+  Plugin URI:
   Description: Permettre la lecture des flux
   Version: 1.0
   Author: ARS GROUP
@@ -10,7 +10,7 @@
  */
 
 define('WPIF_PLUGIN_FILE',__FILE__);
-define('WPIF_DIR', plugin_dir_path(__FILE__));	 
+define('WPIF_DIR', plugin_dir_path(__FILE__));
 define('WPIF_URL', plugin_dir_url(__FILE__));
 define('WPIF_API_URL_SITE', get_site_url() . "/");
 
@@ -19,7 +19,7 @@ define('WPIF_API_URL_SITE', get_site_url() . "/");
 // error_reporting(E_ALL);
 
 class WpImportFlux {
-	private $post_type; 
+	private $post_type;
 	private $stape  = array();
 	function __construct() {
 		$this->post_type = 'wp_product_import';
@@ -28,29 +28,62 @@ class WpImportFlux {
 			'downloading' => 1,
 		);
 
+		add_action( 'cron_flux_download', array( $this, 'download_flux' ), 10, 1 );
+
+		add_action( 'wdddfdfqdp', function(){
+			// $this->create_categories_from('https://flux.netaffiliation.com/feed.php?maff=F2C0FB74P4189453044727F7747100955L4D8B7V4');
+		} );
+
+		add_action( 'admin_enqueue_scripts', array( $this, 'flux_mapping_scripts' ), 9999 );
+
 		add_action( 'init', array(&$this,'register_post_types'), 0 );
 		add_filter( 'cron_schedules', array(&$this,'wpshout_add_cron_interval') );
 
 		add_action('add_meta_boxes', array(&$this,'add_custom_box'));
 		add_action('save_post', array(&$this,'save_postdata'));
-	
+
 		add_action('manage_'.$this->post_type.'_posts_custom_column', array(&$this, 'custom_flux_product_columns'), 15, 3);
 		add_filter('manage_'.$this->post_type.'_posts_columns', array(&$this, 'flux_product_columns'), 15, 1);
 
 		add_action("admin_menu", array(&$this,"plugin_setup_menu"));
-		
+
 		add_action( 'wp_ajax_import_flux_ajax_request', array(&$this,'ajax_callback') );
   		add_action( 'wp_ajax_nopriv_import_flux_ajax_request', array(&$this,'ajax_callback') );
-  		
+
 
 		add_action('cron_flux_reader', array(&$this,'flux_reader') );
 		$args = array( false );
 		if ( ! wp_next_scheduled( 'cron_flux_reader', $args ) ) {
 		    wp_schedule_event( time(), 'everyminute', 'cron_flux_reader', $args );
 		}
+
+/*
+		add_action('cron_flux_reader_category', array(&$this,'download_flux') );
+		if ( ! wp_next_scheduled( 'cron_flux_reader_category', array('https://flux.netaffiliation.com/feed.php?maff=F2C0FB74P4189453044727F7747100955L4D8B7V4') ) ) {
+		    wp_schedule_event( time(), 'daily', 'cron_flux_reader_category', array('https://flux.netaffiliation.com/feed.php?maff=F2C0FB74P4189453044727F7747100955L4D8B7V4') );
+		}*/
+
 		add_filter( 'woocommerce_product_data_store_cpt_get_products_query', array(&$this,'handle_custom_query_var'), 10, 2 );
 
-	}  
+		add_action( 'admin_head', function(){
+			?>
+			<link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
+			<script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
+			<?php
+		});
+
+		add_action( 'wpfqsdf', function(){
+				/*$result = wp_remote_get(
+					'https://flux.netaffiliation.com/feed.php?maff=F2C0FB74P4189453044727F7747100955L4D8B7V4',
+					array(
+						'timeout'     => 3600,
+						'sslverify' => false
+					)
+				);*/
+				// $this->download_flux('https://flux.netaffiliation.com/feed.php?maff=F2C0FB74P4189453044727F7747100955L4D8B7V4');
+		});
+
+	}
 	function ajax_callback() {
 		    $module = "";
 		    if(isset($_POST['function'])){
@@ -64,7 +97,7 @@ class WpImportFlux {
 		 		unlink(__DIR__.'/flux/'.$_GET['url_file']);
 		    	echo json_encode(array());
 		    }else if($module=="get_files_to_update"){
-		    	$dir_handle = opendir(WPIF_DIR.'/'.$_GET['dir']); 
+		    	$dir_handle = opendir(WPIF_DIR.'/'.$_GET['dir']);
 		    	$list_files = array();
 		    	while(($file_name = readdir($dir_handle)) !== false) {
 		    		if($file_name !== '.' && $file_name !== '..' && $file_name !== 'archive' && $file_name !== '.DS_Store'){
@@ -86,6 +119,17 @@ class WpImportFlux {
 	        'import-product',
 	        array(&$this,"import_flux_template")
 	    );
+
+			// Page to display mapping
+			add_submenu_page(
+				'edit.php?post_type='.$this->post_type, // Parent slug ( it's a custom post type )
+				__( 'Flux Mapping' ), // Page title
+				__( 'Flux Mapping' ), // Menu title
+				'manage_woocommerce', // Required user capability
+				'flux-mapping', // Menu slug
+				array( $this, 'flux_mapping_template' ) // callback
+			);
+
 
 	}
 	function flux_product_columns($defaults ){
@@ -127,11 +171,11 @@ class WpImportFlux {
 	        'post_type'         => $this->post_type,
 	        'posts_per_page'    => '1'
 	    );
-	   	
+
 	    // run query ##
 	    $posts = get_posts( $args );
 
-	   	if(count($posts)){	
+	   	if(count($posts)){
 	   		$post_id = $posts[0]->ID;
 			update_post_meta($post_id,"flux_stape",1);
 			$url = get_post_meta($post_id, 'flux_url', true);
@@ -142,16 +186,36 @@ class WpImportFlux {
 	   	}
 	   	return false;
 	}
-	function save_postdata($post_id){
+
+	// save post
+	function save_postdata( $post_id ){
+
+		if ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE )
+		    return $post_id;
+
 	    if (get_post_type($post_id) === $this->post_type) {
-		    $metas = array("flux_stape","flux_url");
-		    foreach ($_POST as $key => $value) {
-		   		if (in_array($key, $metas)) {
-				   update_post_meta($post_id,$key,$value);
-				}
+				$metas = array( 'flux_stap', 'flux_url' );
+
+				foreach ($_POST as $key => $value) {
+			   		if (in_array($key, $metas)) {
+					   update_post_meta( $post_id, $key, $value );
+
+					}
 	    	}
+
+				// check if post is published
+				if( get_post_status( $post_id ) == 'publish' ){
+					$this->create_cron( $post_id );
+				}
 		}
+		return $post_id;
 	}
+
+	// transition post status to checkf if post is pubelsh or not
+	function flux_transition_post_status( string $new_status, $old_status, $post ){
+
+	}
+
 	function add_custom_box(){
 		$screens = [$this->post_type, 'wporg_cpt'];
 	    foreach ($screens as $screen) {
@@ -170,6 +234,11 @@ class WpImportFlux {
 		include(WPIF_DIR.'template/html/admin-flux-import.php');
 
 	}
+
+	function flux_mapping_template( $post ){
+			include(WPIF_DIR.'template/html/admin-flux-mapping.php');
+	}
+
 	// Register Custom Post Type
 	function register_post_types() {
 
@@ -227,7 +296,7 @@ class WpImportFlux {
 
 		}
 	function flux_reader(){
-	
+
 		file_put_contents(WPIF_DIR."/cron/cron_last_update.txt",date('y-m-d h:i:s') );
 
 		global $woocommerce;
@@ -243,19 +312,19 @@ class WpImportFlux {
 		        'post_type'         => $this->post_type,
 		        'posts_per_page'    => '1'
 		    );
-		   	
+
 		    // run query ##
 		    $posts = get_posts( $args );
 
-		   	if(count($posts)){	
+		   	if(count($posts)){
 		   		$post_id = $posts[0]->ID;
 				update_post_meta($post_id,"flux_stape",3);
 				$url = WPIF_DIR."/flux/flux_".$post_id.".xml";
 
 				try {
-					
+
 					$xml = new SimpleXMLElement($url, 0, true);
-					
+
 					$products = $xml->xpath( '/produits/produit' );
 
 					foreach ($products as $key => $product) {
@@ -265,7 +334,7 @@ class WpImportFlux {
 						$reference_interne = (int) $product->reference_interne;
 						$price = (float) $product->prix;
 						$url_photo_grande = (string) $product->url_photo_grande;
-						
+
 						$categories_str = (string) $product->categorie;
 						$categories = explode( '|', $categories_str);
 
@@ -273,7 +342,7 @@ class WpImportFlux {
 
 						// check if parent product already exist
 						$wc_products = wc_get_products( array( 'reference_interne' => $reference_interne ) );
-						
+
 						if( empty($wc_products) ){
 
 							foreach ($categories as $key => $value) {
@@ -296,23 +365,23 @@ class WpImportFlux {
 							// create variation
 							$variation = new WC_Product_Variation( $wc_product_id );
 
-							
+
 
 						}
-						
+
 					}
 					update_post_meta($post_id,"flux_stape",4);
 
 				} catch (Exception $e) {
-					
+
 				}
 		 	}
-			
+
 		}
 
 	}
 	function generate_geatured_image( $image_url, $post_id  ){
-		    
+
 		    $upload_dir = wp_upload_dir();
 		    $image_data = file_get_contents($image_url);
 		    $filename = basename($image_url);
@@ -348,8 +417,8 @@ class WpImportFlux {
 			$term = get_term_by( 'name', $category, 'product_cat' );
 
 			if( !$term ){ // term not found or taxonomy doesn't exist
-				
-				wp_insert_term( 
+
+				wp_insert_term(
 					$category,
 					'product_cat'
 				);
@@ -359,7 +428,7 @@ class WpImportFlux {
 		function get_category_id_by_name( $category ){
 			$term = get_term_by( 'name', $category, 'product_cat' );
 			if( $term )
-				return $term->term_id;	
+				return $term->term_id;
 			return 0;
 		}
 
@@ -378,9 +447,137 @@ class WpImportFlux {
 		}
 
 
+	function create_categories_from(  ){
+		$url = 'https://flux.netaffiliation.com/feed.php?maff=F2C0FB74P4189453044727F7747100955L4D8B7V4';
+		try {
+			$xml = new SimpleXMLElement( $url, 0, true );
+			// $products = $xml->xpath( '/produits/produit' );
+			$products = $xml->xpath( '/catalog/product' );
+			$content = '';
+			$categories = array();
+			$counter = 0;
+			foreach ( $products as $key => $product ) {
+				if($counter == 10 )break;
+				$category = (string) $product->categorie;
+
+				if( !in_array( $category, $categories ) ){
+					$categories[] = $category;
+					$content .= $category . '\n';
+				}
+				$counter ++;
+			}
+		} catch (\Exception $e) {
+				$content .= 'An error occured';
+		}
+		file_put_contents( WPIF_DIR."/flux/flux_result.text", $content);
+	}
+
+	/**
+	* Background tasks
+	*/
+
+	// Create a cron
+	function create_cron( $post_id ){
+
+		$hook = 'cron_flux_download';
+		$args = array( $post_id );
+
+		if ( !wp_next_scheduled( $hook, $args ) ) {
+		    wp_schedule_event( time(), 'weekly',  $hook, $args );
+		}
+
+	}
+
+	// Delete a cron
+	function deleteCron(){
+
+	}
+
+	// Import file
+function download_flux( $post_id ){
+
+		$url = get_post_meta( $post_id, 'flux_url', true );
+		$output_path = WPIF_DIR . 'flux/flux_' . $post_id . '.xml';
+		$progress_path = WPIF_DIR . 'flux/progress_'. $post_id . '.txt';
+
+		file_put_contents( $progress_path, '' );
+		$output_file = fopen( $output_path, 'w' );
+
+		$ch = curl_init( $url );
+		curl_setopt( $ch, CURLOPT_HEADER, 0);
+		curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt( $ch, CURLOPT_FOLLOWLOCATION, true);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 400);
+		curl_setopt( $ch, CURLOPT_PROGRESSFUNCTION, array( &$this, 'progressCallback' ) );
+		curl_setopt( $ch, CURLOPT_NOPROGRESS, false );
+		curl_setopt( $ch, CURLOPT_FILE, $output_file );
+		curl_exec( $ch );
+		curl_close($ch);
+		fclose( $output_file );
+	}
+
+	// Progess of importation
+	function progressCallback($resource, $download_size, $downloaded, $upload_size, $uploaded){
+
+		if (version_compare(PHP_VERSION, '5.5.0') < 0) {
+				$uploaded = $upload_size;
+				$upload_size = $downloaded;
+				$downloaded = $download_size;
+				$download_size = $resource;
+		}
+		$content = "$download_size, $downloaded";
+		/* // TODO:
+		echo curl_getinfo($resource, CURLINFO_CONTENT_LENGTH_DOWNLOAD ); // -1 Taille inconnu
+
+		$fp = fopen( WPIF_DIR .'/flux/progress.txt', 'a' );
+		fputs( $fp, "$content\n" );
+		fclose( $fp );
+		*/
+	}
+
+	/**
+	 * Scripts and Styles
+	 */
+	function flux_mapping_scripts(){
+
+		wp_register_style(
+			$handle = 'font-awesome-style',
+			$src = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/css/all.min.css',
+			$deps = array(),
+			$ver = false,
+			$media = 'all'
+		);
+
+		wp_enqueue_style(
+			$handle = 'admin-flux-mapping-style',
+			$src = plugins_url( '/template/css/admin-flux-mapping.css', __FILE__ ),
+			$deps = array( 'font-awesome-style' ),
+			$ver = false,
+			$media = 'all'
+		);
+
+		wp_enqueue_script( $handle='admin-flux-mapping-js',
+			$src = plugins_url( '/template/js/admin-flux-mapping.js', __FILE__ ),
+			$deps = array( 'jquery' ),
+			$ver = false,
+			$in_footer = false
+		);
+
+	}
+
+	// Instanciation
+	public static function getInstance(){
+
+		static $instance = null;
+
+		if( ! $instance ){
+			$instance = new WpImportFlux();
+		}
+		return $instance;
+	}
+
+
 
 }
-new WpImportFlux();
-
-
-
+WpImportFlux::getInstance();
