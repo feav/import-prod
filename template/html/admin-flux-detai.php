@@ -14,7 +14,7 @@
     <div class="double">
         <div style="width: 100%">
             <fieldset>
-                 <label for="flux_stape">Etat de Chaergment du Flux :</label>
+                 <label for="flux_stape">Etat de Chargement du Flux :</label>
                 <select name="flux_stape" id="flux_stape" >
                     <option value="-1" <?php if($etat==0)echo 'selected="selected"';?>>
                         En Attente de telechargement 
@@ -30,6 +30,9 @@
                     </option>
                     <option value="4" <?php if($etat==4)echo 'selected="selected"';?>>
                         Importation de produits terminee
+                    </option>
+					<option value="-2" <?php if($etat==-2)echo 'selected="selected"';?>>
+                        Annuler l'import du flux actuel
                     </option>
                 </select>
             </fieldset>
