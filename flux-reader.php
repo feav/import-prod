@@ -66,7 +66,9 @@ class WpImportFlux {
 
 		add_action( 'cron_flux_load_products', array( $this, 'import_products' ), 10, 1 );
 
-		add_action( 'cron_flux_update_products', array( $this, 'update_products_cron' ) );
+		add_action( 'cron_flux_load_products_by_category', array( $this, 'import_products_by_category' ), 10, 2 );
+
+		// add_action( 'cron_flux_update_products', array( $this, 'update_products_cron' ) );
 
 		add_action( 'rest_api_init', array( $this, 'my_register_route' ) );
 
@@ -292,6 +294,8 @@ class WpImportFlux {
 		    return $post_id;
 
 	    if (get_post_type($post_id) === $this->post_type) {
+
+	    	$helper = new FluxHelper();
 			
 			if( isset( $_POST[ 'flux-status' ] ) ){
 				$is_active = (int)$_POST[ 'flux-status' ];
@@ -331,6 +335,9 @@ class WpImportFlux {
 					$args = array( $post_id );
 					wp_clear_scheduled_hook( 'cron_flux_load_products', $args );
 					wp_clear_scheduled_hook( 'cron_flux_load_products', $args );
+
+					$this->reset_all_already_created( $post_id );
+					update_post_meta( $post_id, 'current_started_cron', 0 );
 				}
 			}else{
 				update_post_meta( $post_id, 'activate_flux_mapping_update', 0 );
@@ -367,9 +374,51 @@ class WpImportFlux {
 
 				update_post_meta( $post_id, 'flux_product_categories', maybe_serialize( $flux_product_categories ) );
 
+				update_post_meta( $post_id, 'max_inputs', count( $flux_product_categories ) );
+
+				$is_positions_are_updated = get_post_meta( $post_id, 'is_positions_are_updated', true );
+
+				if( isset( $_POST['update-flux-categories-positions'] )  || empty( $is_positions_are_updated ) ){
+					
+					update_post_meta( $post_id, 'is_positions_are_updated', '1' );
+
+					$xml_products = $helper->get_xml_products( $post_id );
+					$helper->save_categories_indexes( $post_id, $xml_products, $flux_categories );
+
+				}
+
+				
+				for ($i=0; $i < $helper->get_max_async_cron(); $i++) { 
+
+
+					if( isset( $flux_categories[ $i ] ) ){
+						
+						$current_started_cron = get_post_meta( $post_id, 'current_started_cron', true );
+
+						if( empty($current_started_cron) ){
+							$current_started_cron = 0;							
+						}
+
+						if( isset( $flux_categories[ $i ] ) ){
+							
+							$args = array( $post_id, $flux_categories[ $i ] );
+
+
+							if ( !wp_next_scheduled( 'cron_flux_load_products_by_category', $args ) ) {
+								wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products_by_category',  $args );
+							}
+
+							update_post_meta( $post_id, 'current_started_cron', ( $current_started_cron + 1 ) );	
+						}
+						
+					}
+				}
+				
+				
+
 				// Manage importation
 				$args = array( $post_id );
-
+								
 				if ( !wp_next_scheduled( 'cron_flux_load_products', $args ) ) {
 					$args = array( $post_id );
 					wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products', $args );
@@ -380,6 +429,62 @@ class WpImportFlux {
 			}
 		}
 		return $post_id;
+	}
+
+
+	public function call_next_cron( $post_id ){
+
+		$is_end = true;
+
+		$flux_product_categories_original = get_post_meta( $post_id, 'flux_product_categories', true );
+		$flux_product_categories = maybe_unserialize( $flux_product_categories_original );
+		$current_started_cron = get_post_meta( $post_id, 'current_started_cron', true );
+		$counter = 0;
+
+		if( $current_started_cron < count( $flux_product_categories )  ){
+			
+			foreach ( $flux_product_categories as $key => $flux_product_category ) {
+				
+				$counter ++;
+
+				if( $counter == ( $current_started_cron + 1 ) ){
+						
+					$args = array( $post_id, $key );
+					
+					$is_end = true;
+
+					if ( !wp_next_scheduled( 'cron_flux_load_products_by_category', $args ) ) {
+						wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products_by_category',  $args );
+					}
+
+					update_post_meta( $post_id, 'current_started_cron', ( $current_started_cron + 1 ) );
+
+					break;
+				}
+			}
+
+		}else{
+			// update_post_meta( $post_id, 'current_started_cron', 0 );
+		}
+
+		return $is_end;
+
+	}
+
+	public function reset_all_already_created( $post_id ){
+
+		$flux_product_categories_original = get_post_meta( $post_id, 'flux_product_categories', true );
+		$flux_product_categories = array();
+
+		if( !empty( $flux_product_categories_original ))
+			$flux_product_categories = maybe_unserialize( $flux_product_categories_original );
+
+		$size = count( $flux_product_categories );
+
+		for ($i=0; $i < $size ; $i++) { 
+			update_post_meta( $post_id, 'already_created_'. $post_id . '_' . ( $i + 1 ) , 0 );		
+		}
+
 	}
 
 
@@ -446,6 +551,7 @@ class WpImportFlux {
 	function wporg_custom_box_html($post){
 		include(WPIF_DIR.'template/html/admin-flux-detai.php');
 	}
+
 	function import_flux_template($post){
 		include(WPIF_DIR.'template/html/admin-flux-import.php');
 
@@ -471,8 +577,14 @@ class WpImportFlux {
 
 		?>
 			<div>
-				<label for="activate-flux-mapping-update">Activer ?</label>
-				<input id="activate-flux-mapping-update" name="activate-flux-mapping-update" type="checkbox" value="<?php echo $is_activate;?>" <?php if($is_activate) echo 'checked'; ?>/>
+				<div>
+					<label for="activate-flux-mapping-update">Activer ?</label>
+					<input id="activate-flux-mapping-update" name="activate-flux-mapping-update" type="checkbox" value="<?php echo $is_activate;?>" <?php if($is_activate) echo 'checked'; ?>/>
+				</div>
+				<div>
+					<label for="update-flux-categories-positions">Mettre à jour les positions des catégories?</label>
+					<input id="update-flux-categories-positions" name="update-flux-categories-positions" type="checkbox"/>
+				</div>
 			</div>
 		<?php
 	}
@@ -556,12 +668,14 @@ class WpImportFlux {
 			}
 		}
 
+		/*
 		foreach ( $attributes_taxonomies as $key => $tanoxomy ) {
 			if( $tanoxomy->attribute_name == 'genre' ){
 				$is_gender_taxonomy = true;
 				break;
 			}
 		}
+		*/
 
 		foreach ( $attributes_taxonomies as $key => $tanoxomy ) {
 			if( $tanoxomy->attribute_name == 'sexe' ){
@@ -593,7 +707,7 @@ class WpImportFlux {
 			);
 			wc_create_attribute($args);
 		}
-
+		/*
 		if( !taxonomy_exists( $gender_taxonomy ) && !get_taxonomy( $gender_taxonomy ) && !$is_gender_taxonomy || !taxonomy_exists( 'genre' )){
 			$args = array(
 				'name'         => "genre",
@@ -603,6 +717,7 @@ class WpImportFlux {
 			);
 			wc_create_attribute($args);
 		}
+		*/
 
 		if( !taxonomy_exists( $sex_taxonomy ) && !get_taxonomy( $sex_taxonomy ) && !$is_sex_taxonomy || !taxonomy_exists( 'sexe' )){
 			$args = array(
@@ -984,6 +1099,111 @@ class WpImportFlux {
 
 		$this->recall_import_products( $post_id );
 	}
+
+	public function import_products_by_category( $post_id, $flux_category ){
+
+		$helper = new FluxHelper();
+		$xml_products = $helper->get_xml_products( $post_id );
+		
+		$position = $helper->get_flux_category_position( $post_id, $flux_category );
+
+		$flux_product_categories_original = get_post_meta( $post_id, 'flux_product_categories', true );
+		$flux_product_categories = array();
+
+		$all_indexes_original = get_post_meta( $post_id,  'flux_categories_indexes', true );
+		$indexes = array();
+
+		$product_categories = array(); 
+
+		$update_is_activated = get_post_meta( $post_id,  'activate_flux_mapping_update', true );
+
+		$already_created = get_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , true );
+
+		if( empty( $already_created ) )
+			$already_created = 0;
+
+		if( !empty( $flux_product_categories_original ) )
+			$flux_product_categories = maybe_unserialize( $flux_product_categories_original );
+
+		if( isset( $flux_product_categories[ $flux_category ] ) )
+			$product_categories = $flux_product_categories[ $flux_category ];
+
+		if( !empty( $all_indexes_original ) )
+			$all_indexes = maybe_unserialize( $all_indexes_original );
+
+		if( isset( $all_indexes[ $flux_category ] ) )
+			$indexes = $all_indexes[ $flux_category ];
+
+		$indexes = array_slice( $indexes, $already_created );
+
+		$created_number = $helper->create_products_from_indexes( $post_id, $xml_products, $flux_category, $product_categories, $update_is_activated , $indexes );
+
+
+		if( $created_number === false ){
+			// we need to reposition
+			$args = array( $post_id, $flux_category );
+
+			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+			// wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
+
+			update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );
+
+			return ;
+		}else{
+
+			if( $created_number === 0 ){ // importation is finished for this category
+				
+				$args = array( $post_id, $flux_category );
+				wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+				wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+
+				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );				
+
+				// $is_end = $this->call_next_cron( $post_id );
+
+				return ;
+			}else{
+
+				$already_created += $created_number;
+
+				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , $already_created );
+
+				$this->recall_import_products_by_category( $post_id, $flux_category, $position );	
+			}
+
+			
+		}
+
+	}
+
+	/*
+	public function recall_import_products_by_category( $post_id, $flux_category ){
+
+		$args = array( $post_id, $flux_category );
+
+		wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
+
+		if ( !wp_next_scheduled( 'cron_flux_load_products_by_category', $args ) ) {
+				wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products_by_category', $args );
+		}
+
+	}
+	*/
+
+	public function recall_import_products_by_category( $post_id, $flux_category, $position ){
+
+		$args = array( $post_id, $flux_category );
+
+		wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+		wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+
+		if ( !wp_next_scheduled( 'cron_flux_load_products_by_category_' . $position, $args ) ) {
+				wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products_by_category_' . $position, $args );
+		}
+
+	}
+
 
 	public function update_products_cron(){
 
