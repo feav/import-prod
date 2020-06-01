@@ -125,7 +125,7 @@ class FluxHelper {
    */
   public function create_products( $flux_id, $xml_products, $flux_category, $prod_cats = array(), $is_updated ){
 
-    $max_product_variable_to_create = 10;
+    $max_product_variable_to_create = 2;
     $counter = 0;
     $products_read = 0;
     $max_product_to_read = 2000;
@@ -843,14 +843,18 @@ class FluxHelper {
 
 	public function create_products_from_indexes( $flux_id, $xml_products, $flux_category, $prod_cats = array(), $is_updated, $indexes = array() ){
 
-	    $max_product_variable_to_create = 10;
+	    $max_product_variable_to_create = 3;
 	    $counter = 0;
+      $products_read = 0;
+      $max_product_to_read = 2000;
 
 	    $flux_category = trim( $flux_category ); // remove spaces at beginning an at the end
 
 	    $xml_products_number = count( $xml_products );
 
 	    foreach ($indexes as $key => $index ) {
+
+        $products_read ++;
 
 	    	if( $index >= $xml_products_number )
 	    		return false; // we need to reposition elements
@@ -1328,10 +1332,11 @@ class FluxHelper {
 	              	$counter ++;
 	            }
 	        }else{
-	        	update_post_meta( $flux_id, 'hello', $flux_category . '-' . $this->get_xml_product_category( $xml_product ) );
 	        	return false; // we need to reposition elements category doesn't match
 	        }
 
+          if( $products_read == $max_product_to_read)
+            break;
 	    }
 
     	return $counter;
@@ -1345,10 +1350,10 @@ class FluxHelper {
   		$positon = 0;
 
   		foreach ($flux_product_categories as $key => $flux_product_category) {
-			$positon ++;
-			if( $key == $flux_category ){
-				break;
-			}  			
+        $positon ++;
+  			if( $key == $flux_category ){
+  				break;
+  			}  			
   		}
 
   		return $positon;

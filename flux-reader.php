@@ -64,7 +64,7 @@ class WpImportFlux {
 
 		add_action( 'cron_flux_download', array( $this, 'download_flux' ), 10, 1 );
 
-		add_action( 'cron_flux_load_products', array( $this, 'import_products' ), 10, 1 );
+		//add_action( 'cron_flux_load_products', array( $this, 'import_products' ), 10, 1 );
 
 		add_action( 'cron_flux_load_products_by_category', array( $this, 'import_products_by_category' ), 10, 2 );
 
@@ -116,7 +116,10 @@ class WpImportFlux {
 			if ( !wp_next_scheduled( 'cron_flux_update_products', $args ) ) {
 				wp_schedule_event( time( ), 'fifteendays', 'cron_flux_update_products', $args );
 			}
-
+			// var_dump( maybe_unserialize( get_post_meta( 25, 'flux_product_categories',  true ) ) );
+			// var_dump( maybe_unserialize( get_post_meta( 25,  'flux_categories_indexes', true ) ) );
+			// var_dump( get_post_meta( 25, 'already_created_25_1'  , true ) );
+			
 		});
 
 
@@ -1143,33 +1146,28 @@ class WpImportFlux {
 			// we need to reposition
 			$args = array( $post_id, $flux_category );
 
-			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
-			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
-			// wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
-
+			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 			update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );
 
-			return ;
 		}else{
 
 			if( $created_number === 0 ){ // importation is finished for this category
 				
 				$args = array( $post_id, $flux_category );
-				wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
-				wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
+
+				wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );				
 
-				// $is_end = $this->call_next_cron( $post_id );
+				$is_end = $this->call_next_cron( $post_id );
 
-				return ;
 			}else{
 
 				$already_created += $created_number;
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , $already_created );
 
-				$this->recall_import_products_by_category( $post_id, $flux_category, $position );	
+				$this->recall_import_products_by_category( $post_id, $flux_category );	
 			}
 
 			
@@ -1177,7 +1175,7 @@ class WpImportFlux {
 
 	}
 
-	/*
+	
 	public function recall_import_products_by_category( $post_id, $flux_category ){
 
 		$args = array( $post_id, $flux_category );
@@ -1189,8 +1187,8 @@ class WpImportFlux {
 		}
 
 	}
-	*/
 
+	/*
 	public function recall_import_products_by_category( $post_id, $flux_category, $position ){
 
 		$args = array( $post_id, $flux_category );
@@ -1203,6 +1201,7 @@ class WpImportFlux {
 		}
 
 	}
+	*/
 
 
 	public function update_products_cron(){
