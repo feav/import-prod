@@ -118,17 +118,42 @@ class WpImportFlux {
 			}
 
 			if( is_front_page() ){
-				if( isset( $_GET['test'] ) ){
-					$time_start_1 = microtime( true );
-					$this->import_products_by_category(2328, 'Homme > Chaussures > Baskets');
-					echo "<pre>";
-					var_dump( maybe_unserialize( get_post_meta( 2328, 'already_created_2328_1', true ) ) );
-					echo "</pre>";
-					// $this->import_products_by_category(39074, 'Chaussures homme | Athlétisme');
-					$time_end_1 = microtime( true );
-					echo "<pre>";
-					var_dump( ($time_end_1 - $time_start_1) / 60 );
-					echo "</pre>";	
+				if( isset( $_GET['evolution'] ) ){
+					if( $_GET['evolution'] == true ){
+
+						$flux_args = array(
+					        'numberposts'      => -1,
+					        'post_type'        => $this->post_type,
+					    );
+
+					    $flux = get_posts( $flux_args );
+
+					    foreach ($flux as $key => $flux_single) {
+					    	$current_flux_category_number = get_post_meta( $flux_single->ID, 'current_started_cron', true );
+					    	echo "<pre>";
+					    	
+					    	echo 'Flux : ' . $flux_single->post_title; echo "\r\n";
+					    	echo 'Current category : ' .  $current_flux_category_number; echo "\r\n";
+					    	echo 'Alread Created : ' .  get_post_meta( $flux_single->ID, 'already_created_'. $flux_single->ID .'_' . $current_flux_category_number, true ); echo "\r\n";
+					    	$flux_categories_indexes_to_check = maybe_unserialize( get_post_meta( $flux_single->ID, 'flux_categories_indexes', true ) );
+					    	$c = 0;
+					    	if( is_array( $flux_categories_indexes_to_check ) ){
+
+					    		foreach ($flux_categories_indexes_to_check as $key => $flux_category_indexes_to_check) {
+									$c ++;
+									if( $current_flux_category_number == $c ){
+										echo 'Total of the category : ' . count( $flux_category_indexes_to_check );
+										break;
+									}
+									
+						    	}
+					    	}else{
+					    		echo 'Total of the category : Unknow ';
+					    	}
+					    	echo "</pre>";
+					    }
+						// $this->import_products_by_category(39074, 'Chaussures homme | Athlétisme');
+					}
 				}
 			}
 			
@@ -456,6 +481,11 @@ class WpImportFlux {
 		$flux_product_categories = maybe_unserialize( $flux_product_categories_original );
 		$current_started_cron = get_post_meta( $post_id, 'current_started_cron', true );
 		$counter = 0;
+
+		if( empty( $current_started_cron ) )
+			$current_started_cron = 0;
+		if( empty( $flux_product_categories_original ) )
+			$flux_product_categories = array();
 
 		if( $current_started_cron < count( $flux_product_categories )  ){
 			
@@ -1120,13 +1150,7 @@ class WpImportFlux {
 	public function import_products_by_category( $post_id, $flux_category ){
 
 		$helper = new FluxHelper();
-		$time_start = microtime(true);
 		$xml_products = $helper->get_xml_products( $post_id );
-		$time_end = microtime(true);
-		$itme_execution = ( $time_end - $time_start ) / 60;
-		echo "<pre>";
-		var_dump( $itme_execution );
-		echo "</pre>";
 
 		$position = $helper->get_flux_category_position( $post_id, $flux_category );
 
@@ -1165,8 +1189,8 @@ class WpImportFlux {
 			// we need to reposition
 			$args = array( $post_id, $flux_category );
 
-			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 			update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );
+			wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 
 		}else{
 
@@ -1177,11 +1201,11 @@ class WpImportFlux {
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );				
 
-				//$is_end = $this->call_next_cron( $post_id );
+				$is_end = $this->call_next_cron( $post_id );
 
 				if( $is_end ){
 
-					$args = array(
+					$product_args = array(
 				        'numberposts'      => -1,
 				        'post_type'        => 'product',
 				        'meta_query' => array(
@@ -1203,9 +1227,10 @@ class WpImportFlux {
 				        ),
 				    );
 
-				    $products = get_posts( $args );
+				    $products = get_posts( $product_args );
 					$helper->delete_products( $post_id, $products, $xml_products );
 					update_post_meta( $post_id, 'activate_flux_mapping_update', 0 ); // delete update
+					update_post_meta( $post_id, 'current_started_cron', 0 );
 				}
 
 			}else{
@@ -1213,11 +1238,9 @@ class WpImportFlux {
 				$already_created += $created_number;
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , $already_created );
-
-				// $this->recall_import_products_by_category( $post_id, $flux_category );	
+				$this->recall_import_products_by_category( $post_id, $flux_category );	
 			}
 
-			
 		}
 
 	}

@@ -845,11 +845,7 @@ class FluxHelper {
 
       $xml_products_number = count( $xml_products );
 
-      $time_start_before_bc = microtime(true);
-
       foreach ($indexes as $key => $index ) {
-
-        $time_start_single_product = microtime(true);
 
         $products_read ++;
 
@@ -903,9 +899,7 @@ class FluxHelper {
             $sizes = explode( ',', $pointures );
 
             if( !empty( $sizes ) && !$this->is_parent_product_exists( $flux_id, $reference ) ){
-
-                var_dump( 'Nouvelle création' );
-
+                
                 $product_variable_id = $this->create_product_variable( $name );
         
                 $product_variable = wc_get_product( $product_variable_id );
@@ -1091,7 +1085,6 @@ class FluxHelper {
 
             }
             else if( $product_variable_id = $this->updated_categories_of_existing_product( 'reference', $reference, $flux_category ) ){
-              var_dump( 'Update de la catégorie' );
               $product_variable = wc_get_product( $product_variable_id );
               $category_ids = $product_variable->get_category_ids();
 
@@ -1105,9 +1098,6 @@ class FluxHelper {
 
             }
             else if( $is_updated ){ // we update the product
-              var_dump( "Mise à jour ");
-
-              $time_before_check = microtime(true);
               if( $this->dont_update_or_create_it( $flux_id, $flux_category, $xml_products, $index ) ){
                 $counter ++ ;
               }else{
@@ -1149,14 +1139,8 @@ class FluxHelper {
 
                     }
 
-
-                    // $WC_Product_Variable_Data_Store_CPT = new WC_Product_Variable_Data_Store_CPT();
-                    // $WC_Product_Variable_Data_Store_CPT->delete_variations( $product_variable_id, true );
-                    // wp_delete_post( $product->ID ); // delete in other to recreate
-
                 }else{
-                  $time_before_variation = microtime(true);
-                    // $product_variable_id = $this->create_product_variable( $name, 'tailles', $sizes  );
+
                     $product_variable_id = $this->create_product_variable( $name );
                     $product_variable = wc_get_product( $product_variable_id );
                     $product_variable->set_category_ids( $prod_cats );
@@ -1334,12 +1318,9 @@ class FluxHelper {
                     $this->generate_geatured_image( $url_photo_grande,  $product_variable_id );
                 }
 
-                var_dump( 'Before variations ' . ( microtime(true) - $time_before_variation ) / 60  . '  taille variations ' . count($sizes) ) ;
-
                 foreach ( $sizes as $key => $size ) {
                   $this->create_product_variation( $product_variable_id, 'pa_taille', $size, $xml_product );
                 }
-                var_dump( 'After variations ' . ( microtime(true) - $time_before_variation ) / 60  . '  taille variations ' . count($sizes) ) ;
 
                 $counter ++;
               };
@@ -1352,17 +1333,7 @@ class FluxHelper {
 
         if( $products_read == $max_product_to_read)
           break;
-
-        $time_end_single_product = microtime(true);
-        echo "<pre>";
-        var_dump('création d\'un produit : ' . ($time_end_single_product - $time_start_single_product )/60 );
-        echo "</pre>";
       }
-
-      $time_end_before_bc = microtime(true);
-      echo "<pre>";
-      var_dump('Après la boucle : ' . ($time_end_before_bc - $time_start_before_bc )/60 );
-      echo "</pre>";
 
 
       return $counter;
@@ -1374,6 +1345,9 @@ class FluxHelper {
       $flux_product_categories = maybe_unserialize( $flux_product_categories_original );
 
       $positon = 0;
+
+      if( empty( $flux_product_categories_original ) )
+        $flux_product_categories = array();
 
       foreach ($flux_product_categories as $key => $flux_product_category) {
       $positon ++;
@@ -1410,8 +1384,6 @@ class FluxHelper {
       }
 
     }
-
-
 }
 
 new FluxHelper(); 
