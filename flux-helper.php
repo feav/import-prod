@@ -140,7 +140,7 @@ class FluxHelper {
     $max_product_variable_to_create = 10;
     $counter = 0;
     $products_read = 0;
-    $max_product_to_read = 200;
+    $max_product_to_read = 2000;
 
     $flux_category = trim( $flux_category ); // remove spaces at beginning an at the end
 
@@ -845,8 +845,11 @@ class FluxHelper {
 
       $xml_products_number = count( $xml_products );
 
-       
+      $time_start_before_bc = microtime(true);
+
       foreach ($indexes as $key => $index ) {
+
+        $time_start_single_product = microtime(true);
 
         $products_read ++;
 
@@ -898,8 +901,6 @@ class FluxHelper {
 
 
             $sizes = explode( ',', $pointures );
-
-            
 
             if( !empty( $sizes ) && !$this->is_parent_product_exists( $flux_id, $reference ) ){
 
@@ -1104,12 +1105,12 @@ class FluxHelper {
 
             }
             else if( $is_updated ){ // we update the product
+              var_dump( "Mise à jour ");
 
+              $time_before_check = microtime(true);
               if( $this->dont_update_or_create_it( $flux_id, $flux_category, $xml_products, $index ) ){
                 $counter ++ ;
               }else{
-                $product_variable_id = null;
-
                 $args = array(
                   'numberposts'      => 1,
                   'post_type'        => 'product',
@@ -1137,11 +1138,24 @@ class FluxHelper {
                 if( !empty( $products ) ){
                     $product = $products[0];
                     $product_variable_id = $product->ID;
-                    $WC_Product_Variable_Data_Store_CPT = new WC_Product_Variable_Data_Store_CPT();
-                    $WC_Product_Variable_Data_Store_CPT->delete_variations( $product_variable_id, true );
+
+                    $product_variable = wc_get_product( $product_variable_id );
+
+                    if( $product_variable ){
+                      $product_variation_ids =  $product_variable->get_children();
+                      foreach ($product_variation_ids as $key => $product_variation_id) {
+                        wp_delete_post( $product_variation_id );
+                      }
+
+                    }
+
+
+                    // $WC_Product_Variable_Data_Store_CPT = new WC_Product_Variable_Data_Store_CPT();
+                    // $WC_Product_Variable_Data_Store_CPT->delete_variations( $product_variable_id, true );
                     // wp_delete_post( $product->ID ); // delete in other to recreate
 
                 }else{
+                  $time_before_variation = microtime(true);
                     // $product_variable_id = $this->create_product_variable( $name, 'tailles', $sizes  );
                     $product_variable_id = $this->create_product_variable( $name );
                     $product_variable = wc_get_product( $product_variable_id );
@@ -1320,13 +1334,15 @@ class FluxHelper {
                     $this->generate_geatured_image( $url_photo_grande,  $product_variable_id );
                 }
 
+                var_dump( 'Before variations ' . ( microtime(true) - $time_before_variation ) / 60  . '  taille variations ' . count($sizes) ) ;
+
                 foreach ( $sizes as $key => $size ) {
                   $this->create_product_variation( $product_variable_id, 'pa_taille', $size, $xml_product );
                 }
+                var_dump( 'After variations ' . ( microtime(true) - $time_before_variation ) / 60  . '  taille variations ' . count($sizes) ) ;
 
                 $counter ++;
-              }
-
+              };
             }else{
                 $counter ++;
             }
@@ -1336,7 +1352,19 @@ class FluxHelper {
 
         if( $products_read == $max_product_to_read)
           break;
+
+        $time_end_single_product = microtime(true);
+        echo "<pre>";
+        var_dump('création d\'un produit : ' . ($time_end_single_product - $time_start_single_product )/60 );
+        echo "</pre>";
       }
+
+      $time_end_before_bc = microtime(true);
+      echo "<pre>";
+      var_dump('Après la boucle : ' . ($time_end_before_bc - $time_start_before_bc )/60 );
+      echo "</pre>";
+
+
       return $counter;
     }
 

@@ -116,12 +116,22 @@ class WpImportFlux {
 			if ( !wp_next_scheduled( 'cron_flux_update_products', $args ) ) {
 				wp_schedule_event( time( ), 'fifteendays', 'cron_flux_update_products', $args );
 			}
-		
-			echo "<pre>";
-			var_dump( maybe_unserialize( get_post_meta( 39074, 'already_created_39074_1', true ) ) );	
-			echo "</pre>";
-			// $this->import_products_by_category(39074, 'Chaussures homme | Athlétisme');
 
+			if( is_front_page() ){
+				if( isset( $_GET['test'] ) ){
+					$time_start_1 = microtime( true );
+					$this->import_products_by_category(2328, 'Homme > Chaussures > Baskets');
+					echo "<pre>";
+					var_dump( maybe_unserialize( get_post_meta( 2328, 'already_created_2328_1', true ) ) );
+					echo "</pre>";
+					// $this->import_products_by_category(39074, 'Chaussures homme | Athlétisme');
+					$time_end_1 = microtime( true );
+					echo "<pre>";
+					var_dump( ($time_end_1 - $time_start_1) / 60 );
+					echo "</pre>";	
+				}
+			}
+			
 		});
 
 
@@ -317,9 +327,9 @@ class WpImportFlux {
 				update_post_meta( $post_id, 'current_flux_categories', '');
 				update_post_meta( $post_id, 'activate_flux_mapping_update', 0 ); // delete update
 				
-	    		$args = array( $post_id );
-				wp_clear_scheduled_hook( 'cron_flux_load_products', $args );
-				wp_clear_scheduled_hook( 'cron_flux_load_products', $args );
+	    		//$args = array( $post_id );
+				//wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
+				//wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 				
 				return $post_id;
 	    	}
@@ -337,9 +347,9 @@ class WpImportFlux {
 				if( $is_active ){
 					update_post_meta( $post_id, 'products_read', 0);
 					update_post_meta( $post_id, 'current_flux_categories', '');
-					$args = array( $post_id );
-					wp_clear_scheduled_hook( 'cron_flux_load_products', $args );
-					wp_clear_scheduled_hook( 'cron_flux_load_products', $args );
+					//$args = array( $post_id );
+					//wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
+					//wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 
 					$this->reset_all_already_created( $post_id );
 					update_post_meta( $post_id, 'current_started_cron', 0 );
@@ -421,12 +431,14 @@ class WpImportFlux {
 				
 
 				// Manage importation
+				/*
 				$args = array( $post_id );
 				
 				if ( !wp_next_scheduled( 'cron_flux_load_products', $args ) ) {
 					$args = array( $post_id );
 					wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products', $args );
 				}
+				*/
 
 			}else{
 				update_post_meta( $post_id, 'flux_stape', $this->downloading_step['waiting'] );
@@ -1108,8 +1120,14 @@ class WpImportFlux {
 	public function import_products_by_category( $post_id, $flux_category ){
 
 		$helper = new FluxHelper();
+		$time_start = microtime(true);
 		$xml_products = $helper->get_xml_products( $post_id );
-		
+		$time_end = microtime(true);
+		$itme_execution = ( $time_end - $time_start ) / 60;
+		echo "<pre>";
+		var_dump( $itme_execution );
+		echo "</pre>";
+
 		$position = $helper->get_flux_category_position( $post_id, $flux_category );
 
 		$flux_product_categories_original = get_post_meta( $post_id, 'flux_product_categories', true );
@@ -1143,7 +1161,6 @@ class WpImportFlux {
 
 		$created_number = $helper->create_products_from_indexes( $post_id, $xml_products, $flux_category, $product_categories, $update_is_activated , $indexes );
 
-
 		if( $created_number === false ){
 			// we need to reposition
 			$args = array( $post_id, $flux_category );
@@ -1160,7 +1177,7 @@ class WpImportFlux {
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );				
 
-				$is_end = $this->call_next_cron( $post_id );
+				//$is_end = $this->call_next_cron( $post_id );
 
 				if( $is_end ){
 
@@ -1197,7 +1214,7 @@ class WpImportFlux {
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , $already_created );
 
-				$this->recall_import_products_by_category( $post_id, $flux_category );	
+				// $this->recall_import_products_by_category( $post_id, $flux_category );	
 			}
 
 			
