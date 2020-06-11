@@ -64,7 +64,7 @@ class WpImportFlux {
 
 		add_action( 'cron_flux_download', array( $this, 'download_flux' ), 10, 1 );
 
-		//add_action( 'cron_flux_load_products', array( $this, 'import_products' ), 10, 1 );
+		// add_action( 'cron_flux_load_products', array( $this, 'import_products' ), 10, 1 );
 
 		add_action( 'cron_flux_load_products_by_category', array( $this, 'import_products_by_category' ), 10, 2 );
 
@@ -116,10 +116,12 @@ class WpImportFlux {
 			if ( !wp_next_scheduled( 'cron_flux_update_products', $args ) ) {
 				wp_schedule_event( time( ), 'fifteendays', 'cron_flux_update_products', $args );
 			}
-			// var_dump( maybe_unserialize( get_post_meta( 25, 'flux_product_categories',  true ) ) );
-			// var_dump( maybe_unserialize( get_post_meta( 25,  'flux_categories_indexes', true ) ) );
-			// var_dump( get_post_meta( 25, 'already_created_25_1'  , true ) );
-			
+		
+			echo "<pre>";
+			var_dump( maybe_unserialize( get_post_meta( 39074, 'already_created_39074_1', true ) ) );	
+			echo "</pre>";
+			// $this->import_products_by_category(39074, 'Chaussures homme | Athlétisme');
+
 		});
 
 
@@ -417,11 +419,10 @@ class WpImportFlux {
 					}
 				}
 				
-				
 
 				// Manage importation
 				$args = array( $post_id );
-								
+				
 				if ( !wp_next_scheduled( 'cron_flux_load_products', $args ) ) {
 					$args = array( $post_id );
 					wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products', $args );
@@ -437,7 +438,7 @@ class WpImportFlux {
 
 	public function call_next_cron( $post_id ){
 
-		$is_end = true;
+		$is_end = false;
 
 		$flux_product_categories_original = get_post_meta( $post_id, 'flux_product_categories', true );
 		$flux_product_categories = maybe_unserialize( $flux_product_categories_original );
@@ -454,7 +455,7 @@ class WpImportFlux {
 						
 					$args = array( $post_id, $key );
 					
-					$is_end = true;
+					$is_end = false;
 
 					if ( !wp_next_scheduled( 'cron_flux_load_products_by_category', $args ) ) {
 						wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products_by_category',  $args );
@@ -467,6 +468,7 @@ class WpImportFlux {
 			}
 
 		}else{
+			$is_end = true;
 			// update_post_meta( $post_id, 'current_started_cron', 0 );
 		}
 
@@ -1120,7 +1122,7 @@ class WpImportFlux {
 
 		$update_is_activated = get_post_meta( $post_id,  'activate_flux_mapping_update', true );
 
-		$already_created = get_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , true );
+		$already_created = (int)get_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , true );
 
 		if( empty( $already_created ) )
 			$already_created = 0;
@@ -1154,12 +1156,40 @@ class WpImportFlux {
 			if( $created_number === 0 ){ // importation is finished for this category
 				
 				$args = array( $post_id, $flux_category );
-
 				wp_clear_scheduled_hook( 'cron_flux_load_products_by_category', $args );
 
 				update_post_meta( $post_id, 'already_created_'. $post_id . '_' . $position , 0 );				
 
 				$is_end = $this->call_next_cron( $post_id );
+
+				if( $is_end ){
+
+					$args = array(
+				        'numberposts'      => -1,
+				        'post_type'        => 'product',
+				        'meta_query' => array(
+				          'relation' => 'AND',
+				          array(
+				              array(
+				                'key' => 'reference',
+				                'value' => $reference,
+				                'compare' => '='
+				              ),
+				          ),
+				          array(
+				              array(
+				                'key' => 'flux_id',
+				                'value' => $post_id,
+				                'compare' => '='
+				              ),
+				          ),
+				        ),
+				    );
+
+				    $products = get_posts( $args );
+					$helper->delete_products( $post_id, $products, $xml_products );
+					update_post_meta( $post_id, 'activate_flux_mapping_update', 0 ); // delete update
+				}
 
 			}else{
 
@@ -1175,7 +1205,6 @@ class WpImportFlux {
 
 	}
 
-	
 	public function recall_import_products_by_category( $post_id, $flux_category ){
 
 		$args = array( $post_id, $flux_category );
@@ -1187,21 +1216,6 @@ class WpImportFlux {
 		}
 
 	}
-
-	/*
-	public function recall_import_products_by_category( $post_id, $flux_category, $position ){
-
-		$args = array( $post_id, $flux_category );
-
-		wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
-		wp_clear_scheduled_hook( 'cron_flux_load_products_by_category_' . $position, $args );
-
-		if ( !wp_next_scheduled( 'cron_flux_load_products_by_category_' . $position, $args ) ) {
-				wp_schedule_event( time( ), 'weekly', 'cron_flux_load_products_by_category_' . $position, $args );
-		}
-
-	}
-	*/
 
 
 	public function update_products_cron(){

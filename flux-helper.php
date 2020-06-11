@@ -5,7 +5,7 @@ class FluxHelper {
   }
 
   public function get_max_async_cron(){
-  	return 1;
+    return 1;
   }
 
 
@@ -17,7 +17,7 @@ class FluxHelper {
    * @param  string $meta_value of the reference
    * @return boolean
    */
-  public function is_parent_product_exists( $flux_id, $meta_key = 'reference', $meta_value = null){
+  public function is_parent_product_exists( $flux_id, $reference ){
 
       $args = array(
         'numberposts'      => 1,
@@ -25,22 +25,18 @@ class FluxHelper {
         'meta_query' => array(
           'relation' => 'AND',
           array(
-              'key'     => $meta_key,
-              'value'   => $meta_value,
-              'compare' => '=',
+              array(
+                'key' => 'reference',
+                'value' => $reference,
+                'compare' => '='
+              ),
           ),
           array(
-            'relation' => 'OR',
-            array(
-              'key'     => 'flux_id',
-              'value'   => $flux_id,
-              'compare' => '=',
-            ),
-            array(
-              'key'     => 'flux_id',
-              'value' => '',
-              'compare' => 'NOT EXISTS',
-            ),
+              array(
+                'key' => 'flux_id',
+                'value' => $flux_id,
+                'compare' => '='
+              ),
           ),
         ),
       );
@@ -49,6 +45,41 @@ class FluxHelper {
       if( empty( $products ) )
           return false;
       return true;
+  }
+
+  /**
+  * Avoid du plication of update in i run especially
+  */
+  public function dont_update_or_create_it( $flux_id, $flux_category, $xml_products, $index_to_check ){
+
+    $all_indexes_original = get_post_meta( $flux_id,  'flux_categories_indexes', true );
+    $indexes = array();
+    $all_indexes = array();
+
+    $product_categories = array(); 
+
+    if( !empty( $all_indexes_original ) )
+      $all_indexes = maybe_unserialize( $all_indexes_original );
+
+    if( isset( $all_indexes[ $flux_category ] ) )
+      $indexes = $all_indexes[ $flux_category ];
+
+    $result = false;
+
+    foreach ($indexes as $key => $index) {
+      
+      if( $index == $index_to_check )
+        break;
+      
+      if( $this->get_xml_product_reference( $xml_products[ $index ] ) == $this->get_xml_product_reference( $xml_products[ $index_to_check ] ) ){
+        $result = true;
+        break;
+      }
+
+    }
+
+    return $result;
+
   }
 
 
@@ -61,32 +92,13 @@ class FluxHelper {
    * @param  string $flux_category to updated
    * @return int|boolean(false)
    */
-  public function updated_categories_of_existing_product( $flux_id, $meta_key = 'reference', $meta_value = null, $flux_category  ){
+  public function updated_categories_of_existing_product( $meta_key = 'reference', $meta_value = null, $flux_category  ){
 
     $args = array(
       'numberposts'      => 1,
+      'meta_key'         => $meta_key,
+      'meta_value'       => $meta_value,
       'post_type'        => 'product',
-      'meta_query' => array(
-        'relation' => 'AND',
-        array(
-            'key'     => $meta_key,
-            'value'   => $meta_value,
-            'compare' => '=',
-        ),
-        array(
-          'relation' => 'OR',
-          array(
-            'key'     => 'flux_id',
-            'value'   => $flux_id,
-            'compare' => '=',
-          ),
-          array(
-            'key'     => 'flux_id',
-            'value' => '',
-            'compare' => 'NOT EXISTS',
-          ),
-        ),
-      ),
     );
 
     $products = get_posts( $args );
@@ -125,10 +137,10 @@ class FluxHelper {
    */
   public function create_products( $flux_id, $xml_products, $flux_category, $prod_cats = array(), $is_updated ){
 
-    $max_product_variable_to_create = 2;
+    $max_product_variable_to_create = 10;
     $counter = 0;
     $products_read = 0;
-    $max_product_to_read = 2000;
+    $max_product_to_read = 200;
 
     $flux_category = trim( $flux_category ); // remove spaces at beginning an at the end
 
@@ -179,10 +191,10 @@ class FluxHelper {
 
             $sizes = explode( ',', $pointures );
 
-            if( !empty( $sizes ) && !$this->is_parent_product_exists( $flux_id, 'reference', $reference ) ){
+            if( !empty( $sizes ) && !$this->is_parent_product_exists( $flux_id, $reference ) ){
 
                 $product_variable_id = $this->create_product_variable( $name );
-				
+        
                 $product_variable = wc_get_product( $product_variable_id );
                 $product_variable->set_category_ids( $prod_cats );
 
@@ -222,9 +234,9 @@ class FluxHelper {
 
                     $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
                     $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
-					
-      					if( empty( $_product_attributes ) )
-      						$_product_attributes = array();
+          
+                if( empty( $_product_attributes ) )
+                  $_product_attributes = array();
 
                     $_product_attributes[ $taxonomy ] = array(
                           'name'=> $taxonomy,
@@ -314,7 +326,7 @@ class FluxHelper {
                 if( !empty( $sizes ) ){
 
                     $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
-					           $taxonomy = 'pa_taille';
+                     $taxonomy = 'pa_taille';
 
                      if( empty( $_product_attributes ) )
                       $_product_attributes = array();
@@ -330,7 +342,7 @@ class FluxHelper {
                     foreach ($sizes as $key => $size) {
                       
                       $value = $size;
-					  
+            
                       if( !term_exists( $value, $taxonomy ) ){
                         wp_insert_term( $value, $taxonomy );
                       }  
@@ -366,7 +378,7 @@ class FluxHelper {
                 $counter ++;
 
             }
-            else if( $product_variable_id = $this->updated_categories_of_existing_product( $flux_id, 'reference', $reference, $flux_category ) ){
+            else if( $product_variable_id = $this->updated_categories_of_existing_product( 'reference', $reference, $flux_category ) ){
               $product_variable = wc_get_product( $product_variable_id );
               $category_ids = $product_variable->get_category_ids();
 
@@ -383,28 +395,9 @@ class FluxHelper {
 
               $args = array(
                 'numberposts'      => 1,
+                'meta_key'         => 'reference',
+                'meta_value'       => $reference,
                 'post_type'        => 'product',
-                'meta_query' => array(
-                  'relation' => 'AND',
-                  array(
-                      'key'     => $meta_key,
-                      'value'   => $meta_value,
-                      'compare' => '=',
-                  ),
-                  array(
-                    'relation' => 'OR',
-                    array(
-                      'key'     => 'flux_id',
-                      'value'   => $flux_id,
-                      'compare' => '=',
-                    ),
-                    array(
-                      'key'     => 'flux_id',
-                      'value' => '',
-                      'compare' => 'NOT EXISTS',
-                    ),
-                  ),
-                ),
               );
 
               $products = get_posts( $args );
@@ -605,7 +598,7 @@ class FluxHelper {
         }
 
         if( $products_read == $max_product_to_read)
-        	break;
+          break;
     }
 
     return $products_read;
@@ -623,20 +616,20 @@ class FluxHelper {
 
     $url =  WPIF_DIR . 'flux/flux_' . $post_id . '.xml';
 
-		if( ! file_exists( $url ) ) // if xml file doesn't exist
-			return array();
+    if( ! file_exists( $url ) ) // if xml file doesn't exist
+      return array();
 
-		try {
-  			$xml = new SimpleXMLElement( $url, 0, true );
+    try {
+        $xml = new SimpleXMLElement( $url, 0, true );
 
-  			$xml_products = $xml->xpath( '/catalog/product' ); // smallest flux
-  			if( !$xml_products )
-  				$xml_products = $xml->xpath( '/produits/produit' ); // medium flux
-  			if( !$xml_products )
+        $xml_products = $xml->xpath( '/catalog/product' ); // smallest flux
+        if( !$xml_products )
+          $xml_products = $xml->xpath( '/produits/produit' ); // medium flux
+        if( !$xml_products )
           $xml_products = $xml->xpath( '/catalog/product' ); // biggest flux
-  		} catch (\Exception $e) {
-  				return array();
-  		}
+      } catch (\Exception $e) {
+          return array();
+      }
       return $xml_products;
   }
 
@@ -699,7 +692,7 @@ class FluxHelper {
 
       $product_variable = new WC_Product_Variable();
       $product_variable->set_name( $name );
-	
+  
       $product_variable_id = $product_variable->save();
       
       return $product_variable_id;
@@ -720,8 +713,8 @@ class FluxHelper {
 
       $product_variable = wc_get_product( $product_variable_id );
 
-    	// Creating the product variation
-    	$variation = new WC_Product_Variation( );
+      // Creating the product variation
+      $variation = new WC_Product_Variation( );
 
       $sale_price = (string)$xml_product->price;
       $regular_price = (string)$xml_product->old_price;
@@ -763,7 +756,7 @@ class FluxHelper {
         ); 
 
       }
-	  */
+    */
       
       $variation_id = $variation->save();
       update_post_meta( $variation_id, 'url', $url );
@@ -790,9 +783,9 @@ class FluxHelper {
     $image_data = file_get_contents($image_url);
     if( $image_data == null)
       return ;
-	  if( !$image_data )
-		 return ;
-	
+    if( !$image_data )
+     return ;
+  
     $filename = basename($image_url);
     if(wp_mkdir_p($upload_dir['path']))     $file = $upload_dir['path'] . '/' . $filename;
     else                                    $file = $upload_dir['basedir'] . '/' . $filename;
@@ -810,554 +803,587 @@ class FluxHelper {
     $attach_data = wp_generate_attachment_metadata( $attach_id, $file );
     $res1= wp_update_attachment_metadata( $attach_id, $attach_data );
     $res2= set_post_thumbnail( $post_id, $attach_id );
-	}
+  }
 
 
-	public function get_producs_index_of_category( $flux_id, $xml_products, $flux_category ){
-		
-		$result = array();
+  public function get_producs_index_of_category( $flux_id, $xml_products, $flux_category ){
+    
+    $result = array();
 
-		foreach ($xml_products as $key => $xml_product) {
-			
-			if( $this->get_xml_product_category( $xml_product ) == $flux_category )	{
-				array_push( $result, $key );
-			}
-		}
+    foreach ($xml_products as $key => $xml_product) {
+      
+      if( $this->get_xml_product_category( $xml_product ) == $flux_category ) {
+        array_push( $result, $key );
+      }
+    }
 
-		return $result;
-	}
+    return $result;
+  }
 
 
-	public function save_categories_indexes( $flux_id, $xml_products, $flux_categories=array() ){
+  public function save_categories_indexes( $flux_id, $xml_products, $flux_categories=array() ){
 
-		$result = array();
+    $result = array();
 
-		foreach ($flux_categories as $key => $flux_category) {
-			$indexes = $this->get_producs_index_of_category( $flux_id, $xml_products, $flux_category );
-			$result[ $flux_category ] = $indexes;
-		}
+    foreach ($flux_categories as $key => $flux_category) {
+      $indexes = $this->get_producs_index_of_category( $flux_id, $xml_products, $flux_category );
+      $result[ $flux_category ] = $indexes;
+    }
 
-		update_post_meta( $flux_id,  'flux_categories_indexes', maybe_serialize( $result ) );
+    update_post_meta( $flux_id,  'flux_categories_indexes', maybe_serialize( $result ) );
 
-	}
+  }
 
-	public function create_products_from_indexes( $flux_id, $xml_products, $flux_category, $prod_cats = array(), $is_updated, $indexes = array() ){
+    public function create_products_from_indexes( $flux_id, $xml_products, $flux_category, $prod_cats = array(), $is_updated, $indexes = array() ){
 
-	    $max_product_variable_to_create = 3;
-	    $counter = 0;
+      $max_product_variable_to_create = 10;
+      $counter = 0;
       $products_read = 0;
-      $max_product_to_read = 2000;
+      $max_product_to_read = 200;
 
-	    $flux_category = trim( $flux_category ); // remove spaces at beginning an at the end
+      $flux_category = trim( $flux_category ); // remove spaces at beginning an at the end
 
-	    $xml_products_number = count( $xml_products );
+      $xml_products_number = count( $xml_products );
 
-	    foreach ($indexes as $key => $index ) {
+       
+      foreach ($indexes as $key => $index ) {
 
         $products_read ++;
 
-	    	if( $index >= $xml_products_number )
-	    		return false; // we need to reposition elements
-	    	
-	    	$xml_product = $xml_products[ $index ];
-	        
-	        if( $counter == $max_product_variable_to_create )
-	          break;
+        if( $index >= $xml_products_number )
+          return false; // we need to reposition elements
+        
+        $xml_product = $xml_products[ $index ];
+        
+        if( $counter == $max_product_variable_to_create )
+          break;
 
-	        $reference = $this->get_xml_product_reference( $xml_product );
+        $reference = $this->get_xml_product_reference( $xml_product );
 
-	        if( $this->get_xml_product_category( $xml_product ) == $flux_category ){
+        if( $this->get_xml_product_category( $xml_product ) == $flux_category ){
 
-	            $name = (string) $xml_product->name;
-	            $description = (string) $xml_product->description;
-	            $price = (string) $xml_product->price;
-	            $sale_price = (string) $xml_product->old_price;
-	            $url = (string) $xml_product->url;
+            $name = (string) $xml_product->name;
+            $description = (string) $xml_product->description;
+            $price = (string) $xml_product->price;
+            $sale_price = (string) $xml_product->old_price;
+            $url = (string) $xml_product->url;
 
-	            $sex = (string) $xml_product->sexe;
-	            $gender = (string) $xml_product->genre;
-	            $color = (string) $xml_product->color;
-	            $brand = (string) $xml_product->brand;
+            $sex = (string) $xml_product->sexe;
+            $gender = (string) $xml_product->genre;
+            $color = (string) $xml_product->color;
+            $brand = (string) $xml_product->brand;
 
-	            $pointures = (string) $xml_product->pointure;
-	            $url_photo_grande = (string) $xml_product->image_big;
+            $pointures = (string) $xml_product->pointure;
+            $url_photo_grande = (string) $xml_product->image_big;
 
-	            if( empty($name) )
-	              $name = (string) $xml_product->nom;
-	            if( empty( $price ) )
-	              $price = (string) $xml_product->prix;
-	            if( empty( $sale_price ) )
-	              $sale_price = (string) $xml_product->prix_barre;
+            if( empty($name) )
+              $name = (string) $xml_product->nom;
+            if( empty( $price ) )
+              $price = (string) $xml_product->prix;
+            if( empty( $sale_price ) )
+              $sale_price = (string) $xml_product->prix_barre;
 
-	            if( empty( $color ) ){
-	              $color = (string) $xml_product->colorbase;
-	            }else if( empty( $color ) ){
-	              $color = (string) $xml_product->couleur;
-	            }
+            if( empty( $color ) ){
+              $color = (string) $xml_product->colorbase;
+            }else if( empty( $color ) ){
+              $color = (string) $xml_product->couleur;
+            }
 
-	            if( empty( $brand ) )
-	               $brand = (string) $xml_product->marque;
-	            if( empty( $pointures ) )
-	              $pointures = (string) $xml_product->taille;
-	            if( empty( $url_photo_grande ) )
-	            $url_photo_grande = (string) $xml_product->url_photo_grande;
-
-
-	            $sizes = explode( ',', $pointures );
-
-	            if( !empty( $sizes ) && !$this->is_parent_product_exists( $flux_id, 'reference', $reference ) ){
-
-	                $product_variable_id = $this->create_product_variable( $name );
-					
-	                $product_variable = wc_get_product( $product_variable_id );
-	                $product_variable->set_category_ids( $prod_cats );
-
-	                if( !empty( $sale_price ) ){
-	                  
-	                  $sale_price = (float)$sale_price;
-	                  $price = (float)$price;
-
-	                  $product_variable->set_price( $sale_price );
-	                  $product_variable->set_regular_price( $sale_price );
-
-	                  $product_variable->set_sale_price( $price );
-
-	                }else{
-	                  
-	                  $price = (float)$price;
-
-	                  $product_variable->set_price( $price );
-	                  $product_variable->set_regular_price( $price );
-
-	                }
-
-	                $flux_categories = array( $flux_category );
+            if( empty( $brand ) )
+               $brand = (string) $xml_product->marque;
+            if( empty( $pointures ) )
+              $pointures = (string) $xml_product->taille;
+            if( empty( $url_photo_grande ) )
+            $url_photo_grande = (string) $xml_product->url_photo_grande;
 
 
-	                update_post_meta( $product_variable_id, 'reference', $reference  );
-	                update_post_meta( $product_variable_id, 'flux_categories', maybe_serialize( $flux_categories ) );
-	                update_post_meta( $product_variable_id, 'url', $url );
-	                update_post_meta( $product_variable_id, 'flux_id', $flux_id );
+            $sizes = explode( ',', $pointures );
 
-	                if( !empty( $color ) ){
-	                    $value = $color;
-	                    $taxonomy = 'pa_couleur';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+            
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
-						
-	      					if( empty( $_product_attributes ) )
-	      						$_product_attributes = array();
+            if( !empty( $sizes ) && !$this->is_parent_product_exists( $flux_id, $reference ) ){
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                var_dump( 'Nouvelle création' );
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                $product_variable_id = $this->create_product_variable( $name );
+        
+                $product_variable = wc_get_product( $product_variable_id );
+                $product_variable->set_category_ids( $prod_cats );
 
-                  /*
-	                if( !empty( $gender ) ){
-	                    $value = $gender;
-	                    $taxonomy = 'pa_genre';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                if( !empty( $sale_price ) ){
+                  
+                  $sale_price = (float)$sale_price;
+                  $price = (float)$price;
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                  $product_variable->set_price( $sale_price );
+                  $product_variable->set_regular_price( $sale_price );
 
-	                    if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                  $product_variable->set_sale_price( $price );
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                }else{
+                  
+                  $price = (float)$price;
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
-                  */
+                  $product_variable->set_price( $price );
+                  $product_variable->set_regular_price( $price );
 
-	                if( !empty( $sex ) ){
-	                    $value = $sex;
-	                    $taxonomy = 'pa_sexe';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                }
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                $flux_categories = array( $flux_category );
 
-	                    if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                update_post_meta( $product_variable_id, 'reference', $reference  );
+                update_post_meta( $product_variable_id, 'flux_categories', maybe_serialize( $flux_categories ) );
+                update_post_meta( $product_variable_id, 'url', $url );
+                update_post_meta( $product_variable_id, 'flux_id', $flux_id );
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                if( !empty( $color ) ){
+                    $value = $color;
+                    $taxonomy = 'pa_couleur';
+                    if( !term_exists( $value, $taxonomy ) ){
+                      wp_insert_term( $value, $taxonomy );
+                    }
 
-	                if( !empty( $brand ) ){
-	                    $value = $brand;
-	                    $taxonomy = 'pa_marque';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+          
+                if( empty( $_product_attributes ) )
+                  $_product_attributes = array();
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                    $_product_attributes[ $taxonomy ] = array(
+                          'name'=> $taxonomy,
+                          'value'=> $value,
+                          'is_visible' => '1',
+                          'is_variation' => '0',
+                          'is_taxonomy' => '1'
+                    );
 
-	                    if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                }
+                /*
+                if( !empty( $gender ) ){
+                    $value = $gender;
+                    $taxonomy = 'pa_genre';
+                    if( !term_exists( $value, $taxonomy ) ){
+                      wp_insert_term( $value, $taxonomy );
+                    }
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                    if( empty( $_product_attributes ) )
+                      $_product_attributes = array();
 
-	                
-	                if( !empty( $sizes ) ){
+                    $_product_attributes[ $taxonomy ] = array(
+                          'name'=> $taxonomy,
+                          'value'=> $value,
+                          'is_visible' => '1',
+                          'is_variation' => '0',
+                          'is_taxonomy' => '1'
+                    );
 
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
-						           $taxonomy = 'pa_taille';
+                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                }*/
 
-	                     if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                if( !empty( $sex ) ){
+                    $value = $sex;
+                    $taxonomy = 'pa_sexe';
+                    if( !term_exists( $value, $taxonomy ) ){
+                      wp_insert_term( $value, $taxonomy );
+                    }
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                      'name'=> $taxonomy,
-	                      'value'=> '',
-	                      'is_visible' => '1',
-	                      'is_variation' => '1',
-	                      'is_taxonomy' => '1'
-	                    );
-	                    
-	                    foreach ($sizes as $key => $size) {
-	                      
-	                      $value = $size;
-						  
-	                      if( !term_exists( $value, $taxonomy ) ){
-	                        wp_insert_term( $value, $taxonomy );
-	                      }  
-	                      $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
 
-	                    }
+                    if( empty( $_product_attributes ) )
+                      $_product_attributes = array();
 
-	                    update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                    $_product_attributes[ $taxonomy ] = array(
+                          'name'=> $taxonomy,
+                          'value'=> $value,
+                          'is_visible' => '1',
+                          'is_variation' => '0',
+                          'is_taxonomy' => '1'
+                    );
 
-	                if( !empty( $brand ) ){
-	                    $value = $brand;
-	                    $taxonomy = 'product-brand';
+                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                }
 
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                if( !empty( $brand ) ){
+                    $value = $brand;
+                    $taxonomy = 'pa_marque';
+                    if( !term_exists( $value, $taxonomy ) ){
+                      wp_insert_term( $value, $taxonomy );
+                    }
 
-	                    $term = get_term_by( 'name', $value, $taxonomy );
-	                    if( $term )
-	                      $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, array( $term->term_id ), $taxonomy, true );
-	                }
+                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
 
-	                $product_variable->set_description( $description );
-	                $product_variable->save();
+                    if( empty( $_product_attributes ) )
+                      $_product_attributes = array();
 
-	                $this->generate_geatured_image( $url_photo_grande,  $product_variable_id );
+                    $_product_attributes[ $taxonomy ] = array(
+                          'name'=> $taxonomy,
+                          'value'=> $value,
+                          'is_visible' => '1',
+                          'is_variation' => '0',
+                          'is_taxonomy' => '1'
+                    );
 
-	                foreach ( $sizes as $key => $size ) {
-	                  $this->create_product_variation( $product_variable_id, 'pa_taille', $size, $xml_product );
-	                }
+                    update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                }
 
-	                $counter ++;
+                
+                if( !empty( $sizes ) ){
 
-	            }
-	            else if( $product_variable_id = $this->updated_categories_of_existing_product( $flux_id, 'reference', $reference, $flux_category ) ){
-	              $product_variable = wc_get_product( $product_variable_id );
-	              $category_ids = $product_variable->get_category_ids();
+                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                     $taxonomy = 'pa_taille';
 
-	              foreach ($prod_cats as $key => $prod_cat) {
-	                array_push( $category_ids, $prod_cat );
-	              }
-	              $product_variable->set_category_ids( $category_ids );
-	              $product_variable->save();
+                     if( empty( $_product_attributes ) )
+                      $_product_attributes = array();
 
-	              $counter ++;
+                    $_product_attributes[ $taxonomy ] = array(
+                      'name'=> $taxonomy,
+                      'value'=> '',
+                      'is_visible' => '1',
+                      'is_variation' => '1',
+                      'is_taxonomy' => '1'
+                    );
+                    
+                    foreach ($sizes as $key => $size) {
+                      
+                      $value = $size;
+            
+                      if( !term_exists( $value, $taxonomy ) ){
+                        wp_insert_term( $value, $taxonomy );
+                      }  
+                      $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
 
-	            }
-	            else if( $is_updated ){ // we update the product
+                    }
 
-      					$args = array(
-      						'numberposts'      => 1,
-      						'post_type'        => 'product',
+                    update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                }
+
+                if( !empty( $brand ) ){
+                    $value = $brand;
+                    $taxonomy = 'product-brand';
+
+                    if( !term_exists( $value, $taxonomy ) ){
+                      wp_insert_term( $value, $taxonomy );
+                    }
+
+                    $term = get_term_by( 'name', $value, $taxonomy );
+                    if( $term )
+                      $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, array( $term->term_id ), $taxonomy, true );
+                }
+
+                $product_variable->set_description( $description );
+                $product_variable->save();
+
+                $this->generate_geatured_image( $url_photo_grande,  $product_variable_id );
+
+                foreach ( $sizes as $key => $size ) {
+                  $this->create_product_variation( $product_variable_id, 'pa_taille', $size, $xml_product );
+                }
+
+                $counter ++;
+
+            }
+            else if( $product_variable_id = $this->updated_categories_of_existing_product( 'reference', $reference, $flux_category ) ){
+              var_dump( 'Update de la catégorie' );
+              $product_variable = wc_get_product( $product_variable_id );
+              $category_ids = $product_variable->get_category_ids();
+
+              foreach ($prod_cats as $key => $prod_cat) {
+                array_push( $category_ids, $prod_cat );
+              }
+              $product_variable->set_category_ids( $category_ids );
+              $product_variable->save();
+
+              $counter ++;
+
+            }
+            else if( $is_updated ){ // we update the product
+
+              if( $this->dont_update_or_create_it( $flux_id, $flux_category, $xml_products, $index ) ){
+                $counter ++ ;
+              }else{
+                $product_variable_id = null;
+
+                $args = array(
+                  'numberposts'      => 1,
+                  'post_type'        => 'product',
                   'meta_query' => array(
                     'relation' => 'AND',
                     array(
-                        'key'     => $meta_key,
-                        'value'   => $meta_value,
-                        'compare' => '=',
+                        array(
+                          'key' => 'reference',
+                          'value' => $reference,
+                          'compare' => '='
+                        ),
                     ),
                     array(
-                      'relation' => 'OR',
-                      array(
-                        'key'     => 'flux_id',
-                        'value'   => $flux_id,
-                        'compare' => '=',
-                      ),
-                      array(
-                        'key'     => 'flux_id',
-                        'value' => '',
-                        'compare' => 'NOT EXISTS',
-                      ),
+                        array(
+                          'key' => 'flux_id',
+                          'value' => $flux_id,
+                          'compare' => '='
+                        ),
                     ),
                   ),
-      					);
+                );
 
-	              $products = get_posts( $args );
+                $products = get_posts( $args );
 
-		        	if( !empty( $products ) ){
-		                $product = $products[0];
-                    $attachment_id = get_post_thumbnail_id( $product->ID );
-                    if( !empty($attachment_id) )
-                      wp_delete_attachment( $attachment_id, true ); // delete attachment
+                if( !empty( $products ) ){
+                    $product = $products[0];
+                    $product_variable_id = $product->ID;
+                    $WC_Product_Variable_Data_Store_CPT = new WC_Product_Variable_Data_Store_CPT();
+                    $WC_Product_Variable_Data_Store_CPT->delete_variations( $product_variable_id, true );
+                    // wp_delete_post( $product->ID ); // delete in other to recreate
 
-		                wp_delete_post( $product->ID, true ); // delete in other to recreate
-		            }
+                }else{
+                    // $product_variable_id = $this->create_product_variable( $name, 'tailles', $sizes  );
+                    $product_variable_id = $this->create_product_variable( $name );
+                    $product_variable = wc_get_product( $product_variable_id );
+                    $product_variable->set_category_ids( $prod_cats );
 
-	                // $product_variable_id = $this->create_product_variable( $name, 'tailles', $sizes  );
-	                $product_variable_id = $this->create_product_variable( $name );
-	                $product_variable = wc_get_product( $product_variable_id );
-	                $product_variable->set_category_ids( $prod_cats );
+                    if( !empty( $sale_price ) ){
+                      
+                      $sale_price = (float)$sale_price;
+                      $price = (float)$price;
 
-	                if( !empty( $sale_price ) ){
-	                  
-	                  $sale_price = (float)$sale_price;
-	                  $price = (float)$price;
+                      $product_variable->set_price( $sale_price );
+                      $product_variable->set_regular_price( $sale_price );
 
-	                  $product_variable->set_price( $sale_price );
-	                  $product_variable->set_regular_price( $sale_price );
+                      $product_variable->set_sale_price( $price );
 
-	                  $product_variable->set_sale_price( $price );
+                    }else{
+                      
+                      $price = (float)$price;
 
-	                }else{
-	                  
-	                  $price = (float)$price;
+                      $product_variable->set_price( $price );
+                      $product_variable->set_regular_price( $price );
+                      
+                    }
 
-	                  $product_variable->set_price( $price );
-	                  $product_variable->set_regular_price( $price );
-	                  
-	                }
+                    $flux_categories = array( $flux_category );
 
-	                $flux_categories = array( $flux_category );
+                    update_post_meta( $product_variable_id, 'reference', $reference  );
+                    update_post_meta( $product_variable_id, 'flux_categories', maybe_serialize( $flux_categories ) );
+                    update_post_meta( $product_variable_id, 'url', $url );
+                    update_post_meta( $product_variable_id, 'flux_id', $flux_id );
 
+                    if( !empty( $color ) ){
+                        $value = $color;
+                        $taxonomy = 'pa_couleur';
+                        if( !term_exists( $value, $taxonomy ) ){
+                          wp_insert_term( $value, $taxonomy );
+                        }
 
-	                update_post_meta( $product_variable_id, 'reference', $reference  );
-	                update_post_meta( $product_variable_id, 'flux_categories', maybe_serialize( $flux_categories ) );
-	                update_post_meta( $product_variable_id, 'url', $url );
-	                update_post_meta( $product_variable_id, 'flux_id', $flux_id );
+                        $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                        $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+              
+                        if( empty( $_product_attributes ) )
+                        $_product_attributes = array();
 
-	                if( !empty( $color ) ){
-	                    $value = $color;
-	                    $taxonomy = 'pa_couleur';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                          $_product_attributes[ $taxonomy ] = array(
+                                'name'=> $taxonomy,
+                                'value'=> $value,
+                                'is_visible' => '1',
+                                'is_variation' => '0',
+                                'is_taxonomy' => '1'
+                          );
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
-	          
-	                if( empty( $_product_attributes ) )
-	                  $_product_attributes = array();
+                        update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                    }
+                    /*
+                    if( !empty( $gender ) ){
+                        $value = $gender;
+                        $taxonomy = 'pa_genre';
+                        if( !term_exists( $value, $taxonomy ) ){
+                          wp_insert_term( $value, $taxonomy );
+                        }
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                        $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                        $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
-                  /*
-	                if( !empty( $gender ) ){
-	                    $value = $gender;
-	                    $taxonomy = 'pa_genre';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                        if( empty( $_product_attributes ) )
+                          $_product_attributes = array();
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                        $_product_attributes[ $taxonomy ] = array(
+                              'name'=> $taxonomy,
+                              'value'=> $value,
+                              'is_visible' => '1',
+                              'is_variation' => '0',
+                              'is_taxonomy' => '1'
+                        );
 
-	                    if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                         update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                    }
+                    */
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                    if( !empty( $sex ) ){
+                        $value = $sex;
+                        $taxonomy = 'pa_sexe';
+                        if( !term_exists( $value, $taxonomy ) ){
+                          wp_insert_term( $value, $taxonomy );
+                        }
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }*/
+                        $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                        $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
 
-	                if( !empty( $sex ) ){
-	                    $value = $sex;
-	                    $taxonomy = 'pa_sexe';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                        if( empty( $_product_attributes ) )
+                          $_product_attributes = array();
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                        $_product_attributes[ $taxonomy ] = array(
+                              'name'=> $taxonomy,
+                              'value'=> $value,
+                              'is_visible' => '1',
+                              'is_variation' => '0',
+                              'is_taxonomy' => '1'
+                        );
 
-	                    if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                         update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                    }
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                    if( !empty( $brand ) ){
+                        $value = $brand;
+                        $taxonomy = 'pa_marque';
+                        if( !term_exists( $value, $taxonomy ) ){
+                          wp_insert_term( $value, $taxonomy );
+                        }
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                        $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                        $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
 
-	                if( !empty( $brand ) ){
-	                    $value = $brand;
-	                    $taxonomy = 'pa_marque';
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                        if( empty( $_product_attributes ) )
+                          $_product_attributes = array();
 
-	                    $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                        $_product_attributes[ $taxonomy ] = array(
+                              'name'=> $taxonomy,
+                              'value'=> $value,
+                              'is_visible' => '1',
+                              'is_variation' => '0',
+                              'is_taxonomy' => '1'
+                        );
 
-	                    if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                         update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                    }
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                          'name'=> $taxonomy,
-	                          'value'=> $value,
-	                          'is_visible' => '1',
-	                          'is_variation' => '0',
-	                          'is_taxonomy' => '1'
-	                    );
+                    
+                    if( !empty( $sizes ) ){
 
-	                     update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                        $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
+                         $taxonomy = 'pa_taille';
 
-	                
-	                if( !empty( $sizes ) ){
+                         if( empty( $_product_attributes ) )
+                          $_product_attributes = array();
 
-	                    $_product_attributes = get_post_meta( $product_variable_id,'_product_attributes', true );
-	                     $taxonomy = 'pa_taille';
+                        $_product_attributes[ $taxonomy ] = array(
+                          'name'=> $taxonomy,
+                          'value'=> '',
+                          'is_visible' => '1',
+                          'is_variation' => '1',
+                          'is_taxonomy' => '1'
+                        );
+                        
+                        foreach ($sizes as $key => $size) {
+                          
+                          $value = $size;
+                
+                          if( !term_exists( $value, $taxonomy ) ){
+                            wp_insert_term( $value, $taxonomy );
+                          }  
+                          $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
 
-	                     if( empty( $_product_attributes ) )
-	                      $_product_attributes = array();
+                        }
 
-	                    $_product_attributes[ $taxonomy ] = array(
-	                      'name'=> $taxonomy,
-	                      'value'=> '',
-	                      'is_visible' => '1',
-	                      'is_variation' => '1',
-	                      'is_taxonomy' => '1'
-	                    );
-	                    
-	                    foreach ($sizes as $key => $size) {
-	                      
-	                      $value = $size;
-	            
-	                      if( !term_exists( $value, $taxonomy ) ){
-	                        wp_insert_term( $value, $taxonomy );
-	                      }  
-	                      $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, $value, $taxonomy, true );
+                        update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
+                    }
 
-	                    }
+                    if( !empty( $brand ) ){
+                        $value = $brand;
+                        $taxonomy = 'product-brand';
 
-	                    update_post_meta( $product_variable_id,'_product_attributes', $_product_attributes );
-	                }
+                        if( !term_exists( $value, $taxonomy ) ){
+                          wp_insert_term( $value, $taxonomy );
+                        }
 
-	                if( !empty( $brand ) ){
-	                    $value = $brand;
-	                    $taxonomy = 'product-brand';
+                        $term = get_term_by( 'name', $value, $taxonomy );
+                        if( $term )
+                          $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, array( $term->term_id ), $taxonomy, true );
+                    }
 
-	                    if( !term_exists( $value, $taxonomy ) ){
-	                      wp_insert_term( $value, $taxonomy );
-	                    }
+                    $product_variable->set_description( $description );
+                    $product_variable->save();
 
-	                    $term = get_term_by( 'name', $value, $taxonomy );
-	                    if( $term )
-	                      $term_taxonomy_ids = wp_set_object_terms( $product_variable_id, array( $term->term_id ), $taxonomy, true );
-	                }
+                    $this->generate_geatured_image( $url_photo_grande,  $product_variable_id );
+                }
 
-	                $product_variable->set_description( $description );
-	                $product_variable->save();
+                foreach ( $sizes as $key => $size ) {
+                  $this->create_product_variation( $product_variable_id, 'pa_taille', $size, $xml_product );
+                }
 
-	                $this->generate_geatured_image( $url_photo_grande,  $product_variable_id );
+                $counter ++;
+              }
 
-	                foreach ( $sizes as $key => $size ) {
-	                  $this->create_product_variation( $product_variable_id, 'pa_taille', $size, $xml_product );
-	                }
+            }else{
+                $counter ++;
+            }
+        }else{
+          return false; // we need to reposition elements category doesn't match
+        }
 
-	                $counter ++;
+        if( $products_read == $max_product_to_read)
+          break;
+      }
+      return $counter;
+    }
 
-	            }else{
-	              	$counter ++;
-	            }
-	        }else{
-	        	return false; // we need to reposition elements category doesn't match
-	        }
+    public function get_flux_category_position( $flux_id, $flux_category ){
 
-          if( $products_read == $max_product_to_read)
-            break;
-	    }
+      $flux_product_categories_original = get_post_meta( $flux_id, 'flux_product_categories',  true );
+      $flux_product_categories = maybe_unserialize( $flux_product_categories_original );
 
-    	return $counter;
-  	}
+      $positon = 0;
 
-  	public function get_flux_category_position( $flux_id, $flux_category ){
+      foreach ($flux_product_categories as $key => $flux_product_category) {
+      $positon ++;
+      if( $key == $flux_category ){
+        break;
+      }       
+      }
 
-  		$flux_product_categories_original = get_post_meta( $flux_id, 'flux_product_categories',  true );
-  		$flux_product_categories = maybe_unserialize( $flux_product_categories_original );
+      return $positon;
+    }
 
-  		$positon = 0;
+    public function delete_products( $flux_id, $products, $xml_products ){
+      
+      $xml_products_ids = array();
+      
+      foreach ($xml_products as $key => $xml_product) {
+        $xml_products_id = get_xml_product_reference( $xml_product );
+        array_push( $xml_products_ids , $xml_products_id );
+      }
 
-  		foreach ($flux_product_categories as $key => $flux_product_category) {
-        $positon ++;
-  			if( $key == $flux_category ){
-  				break;
-  			}  			
-  		}
+      if( !empty( $xml_products ) && !empty( $products ) ){
 
-  		return $positon;
-  	}
+        foreach ($products as $key => $product) {
+          $product_id = $product->ID;
+          if( !in_array( $product_id, $xml_products_ids ) ){
+            $WC_Product_Variable_Data_Store_CPT = new WC_Product_Variable_Data_Store_CPT();
+            $WC_Product_Variable_Data_Store_CPT->delete_variations( $product_id, true );
+            $attachment_id = get_post_thumbnail_id( $product_id );
+            wp_delete_attachment( $attachment_id, true );
+            wp_delete_post( $product_id, true );
+          }
+        }
+
+      }
+
+    }
 
 
 }
+
+new FluxHelper(); 
