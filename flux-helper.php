@@ -836,10 +836,12 @@ class FluxHelper {
 
     public function create_products_from_indexes( $flux_id, $xml_products, $flux_category, $prod_cats = array(), $is_updated, $indexes = array() ){
 
-      $max_product_variable_to_create = 10;
+      $max_product_variable_to_create = 30;
       $counter = 0;
       $products_read = 0;
       $max_product_to_read = 200;
+      $max_execution_time = 90; // 90 seconds
+      $current_execution_time = 0;
 
       $flux_category = trim( $flux_category ); // remove spaces at beginning an at the end
 
@@ -847,7 +849,7 @@ class FluxHelper {
 
       foreach ($indexes as $key => $index ) {
 
-        $products_read ++;
+        $time_exectuion_start = microtime( true );
 
         if( $index >= $xml_products_number )
           return false; // we need to reposition elements
@@ -1331,10 +1333,20 @@ class FluxHelper {
           return false; // we need to reposition elements category doesn't match
         }
 
+        $products_read ++;
+
         if( $products_read == $max_product_to_read)
           break;
-      }
 
+        $time_exectuion_end = microtime( true );
+        $current_execution_time += ( $time_exectuion_end - $time_exectuion_start );
+
+        
+
+        if( $current_execution_time > $max_execution_time )
+          break;
+
+      }
 
       return $counter;
     }
